@@ -2,26 +2,11 @@
 #include <stdio.h>
 #include <mpi.h>
 #include <time.h>
+#include "functions.c"
 
-void printMatrix(int *matrix, int dim){ //must be square matrix
-  int i;
-  int j;
-  for(i=0;i<dim;i++){
-    for(j=0;j<dim;j++){
-        printf("%d \t",matrix[i*dim+j]);
-    }
-    printf("\n");
-  }
-}
 
-void printVector(int *vector, int dim){
-    int i;
-    for(i=0;i<dim;i++){
-        printf("%d \n", vector[i]);
-    }
-}
 
-int main(int argc, char *argv){
+int main(int argc, char **argv){
   //MPI variables
   int rank; /* rank of the process */
   int size; /* number of processes */
@@ -37,40 +22,38 @@ int main(int argc, char *argv){
   int p = size-1; //number of row bands, each processor treats one band and the final processor is the master
   int dim = 10; //dimension of matrix row/vector
   //Initialise global matrix and vector and result
-  int *matrix =NULL;
-  int *vector=NULL;
-  int *result=NULL;
-  vector = malloc(dim*sizeof(int));
+  double *matrix;
+  double *vector;
+  double *result;
+  vector = malloc(dim*sizeof(double));
   //Initialise local_matrix and local_result
   int local_dim;
-  int *local_result=NULL;
-  int *local_matrix=NULL;
+  double *local_result;
+  double *local_matrix;
 
   if (rank==0){//The master processor. Splits matrix, distributes calculations, and reassembles matrix at the end
 
     //Initialise vector and matrix with random values
-    matrix = malloc(dim*dim*sizeof(int));
-    int i;
-    int j;
-    srand(1);
+    matrix = malloc(dim*dim*sizeof(double));
+    int i, j;
+    srand((unsigned)time(NULL));
     for(i=0; i<dim;i++){
-        vector[i]=rand()/1000;
+        vector[i]=(double)rand()/1000.0;
     }
-    srand(2);
     for (j=0; j<(dim*dim);j++){
-        matrix[j] = rand()/1000;
+        matrix[j] = (double)rand()/1000.0;
     }
     printf("Matrix: \n");
-    printMatrix(matrix, dim);
+    printMatrix(dim, matrix);
     printf("Vector: \n");
-    printVector(vector, dim);
+    printVector(dim, vector);
     //Initialise result
-    result = malloc(dim*sizeof(int));
+    result = malloc(dim*sizeof(double));
 
     // Create and send vector, local_dim and local matrices to each processor
     for(dest=1; dest<size; dest++){
         //Calculate local dim
-        if (dim % p ==0){ // the number of row band is a divisor of the dimension of the matrix
+        if (dim % p == 0){ // the number of row band is a divisor of the dimension of the matrix
             local_dim=dim/p;
             //Get local matrices
             local_matrix = matrix + dim*local_dim*(dest-1);
@@ -90,16 +73,16 @@ int main(int argc, char *argv){
 
         //Send data
         MPI_Send(&local_dim,1,MPI_INT,dest,tag,MPI_COMM_WORLD);
-        MPI_Send(vector,dim,MPI_INT,dest,tag,MPI_COMM_WORLD);
-        MPI_Send(local_matrix,dim*local_dim,MPI_INT,dest,tag,MPI_COMM_WORLD);
+        MPI_Send(vector, dim, MPI_DOUBLE,dest,tag,MPI_COMM_WORLD);
+        MPI_Send(local_matrix,dim*local_dim,MPI_DOUBLE,dest,tag,MPI_COMM_WORLD);
 
     }
 
     //Receive the local_dim and local_results from processors
     for(source=1; source<size; source++){
         MPI_Recv(&local_dim, 1, MPI_INT, source, tag, MPI_COMM_WORLD, &status);
-        int *local_result = malloc(local_dim*sizeof(int));
-        MPI_Recv(local_result, local_dim, MPI_INT, source, tag, MPI_COMM_WORLD, &status);
+        local_result = malloc(local_dim*sizeof(double));
+        MPI_Recv(local_result, local_dim, MPI_DOUBLE, source, tag, MPI_COMM_WORLD, &status);
         // Construction of result from local results
         if(source != size-1){ // All the local results apart from the last one, which may be of a different size
             for(j=0; j<local_dim; j++){
@@ -115,24 +98,26 @@ int main(int argc, char *argv){
     }
     // Print final result
     printf("Result: \n");
-    printVector(result, dim);
+    printVector(dim, result);
   }
 
   else { //i.e. rank != 0. Each processor calculate a local part of the product
     //Receive vector, local_dim and local matrix
     MPI_Recv(&local_dim, 1, MPI_INT, 0, tag, MPI_COMM_WORLD, &status);
-    int *local_matrix = malloc(dim*local_dim*sizeof(int));
-    MPI_Recv(vector, dim, MPI_INT, 0, tag, MPI_COMM_WORLD, &status);
-    MPI_Recv(local_matrix, dim*local_dim, MPI_INT, 0, tag, MPI_COMM_WORLD, &status);
+    MPI_Recv(vector, dim, MPI_DOUBLE, 0, tag, MPI_COMM_WORLD, &status);
+
+    local_matrix = malloc(dim*local_dim*sizeof(double));
+
+    MPI_Recv(local_matrix, dim*local_dim, MPI_DOUBLE, 0, tag, MPI_COMM_WORLD, &status);
+
     //Initialise local result with 0s
-    int *local_result = malloc(local_dim*sizeof(int));
+    local_result = malloc(local_dim*sizeof(double));
     int k;
     for(k=0;k<local_dim;k++){
-      local_result[k]=0;
+      local_result[k]=0.0;
     }
     //Each processor does its local calculation
-    int i;
-    int j;
+    int i,j;
     for(i=0;i<local_dim;i++){
         for(j=0;j<dim;j++){
           local_result[i] += (local_matrix[j+i*dim] * vector[j]);
@@ -140,7 +125,7 @@ int main(int argc, char *argv){
     }
     //Each processor sends its local_dim and its local result to the master processor
     MPI_Send(&local_dim, 1, MPI_INT, 0, tag, MPI_COMM_WORLD);
-    MPI_Send(local_result, local_dim, MPI_INT, 0, tag, MPI_COMM_WORLD);
+    MPI_Send(local_result, local_dim, MPI_DOUBLE, 0, tag, MPI_COMM_WORLD);
   }
 
   // Free variables and finalise MPI
