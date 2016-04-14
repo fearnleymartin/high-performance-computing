@@ -173,7 +173,7 @@ int main(int argc, char **argv){
             // For exiting the loop, the master tells it when to stop with loop boolean
             MPI_Recv(&loop,1,MPI_INT,0,6,MPI_COMM_WORLD,&status);
             if(loop==0){
-                break; //Exit loop on instruction from  mastere
+                break; //Exit loop on instruction from  master
             }
             // Receives v from master (different for each iteration)
             MPI_Recv(v,N,MPI_DOUBLE,0,3,MPI_COMM_WORLD,&status);
